@@ -1,4 +1,3 @@
-
 from audioop import bias
 from typing import Optional
 from unicodedata import bidirectional
@@ -8,6 +7,7 @@ from dataclasses import dataclass
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from torchcrf import CRF
+from torch.nn.utils.rnn import pad_sequence
 from transformers import BertPreTrainedModel, BertConfig, BertModel
 from transformers.file_utils import ModelOutput
 
@@ -21,6 +21,7 @@ class NEROutputs(ModelOutput):
     """
     NOTE: `logits` here is the CRF decoding result.
     """
+
     loss: Optional[torch.FloatTensor] = None
     logits: Optional[torch.LongTensor] = None
 
@@ -30,8 +31,7 @@ class LinearClassifier(nn.Module):
         super().__init__()
         self.num_labels = num_labels
         self.layers = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size, num_labels)
+            nn.Dropout(dropout), nn.Linear(hidden_size, num_labels)
         )
         self.loss_fct = CrossEntropyLoss()
 
@@ -43,7 +43,7 @@ class LinearClassifier(nn.Module):
         loss, pred_labels = None, None
 
         if labels is None:
-            pred_labels = self._pred_labels(_logits)    
+            pred_labels = self._pred_labels(_logits)
         else:
             loss = self.loss_fct(_logits.view(-1, self.num_labels), labels.view(-1))
             if not no_decode:
@@ -57,28 +57,64 @@ class CRFClassifier(nn.Module):
         super().__init__()
         self.dropout = nn.Dropout(dropout)
 
-        '''NOTE: This is where to modify for CRF.
+        # """NOTE: This is where to modify for CRF.
+        self.fc = nn.Linear(hidden_size, num_labels)
+        self.CRF = CRF(num_labels, batch_first=True)
 
-        '''
+        # """
 
-    def _pred_labels(self):
-        '''NOTE: This is where to modify for CRF.
+    def _pred_labels(self, _logits):
+        """NOTE: This is where to modify for CRF.
         
         You need to finish the code to predict labels.
 
         You can add input arguments.
         
-        '''
-        # return pred_labels
+        """
+        pred_labels = torch.tensor(_logits)
+        return pred_labels
 
-    def forward(self, hidden_states, attention_mask, labels=None, no_decode=False, label_pad_token_id=NER_PAD_ID):    
-        '''NOTE: This is where to modify for CRF.
+    def forward(
+        self,
+        hidden_states,
+        attention_mask,
+        labels=None,
+        no_decode=False,
+        label_pad_token_id=NER_PAD_ID,
+    ):
+        """NOTE: This is where to modify for CRF.
         
         You need to finish the code to compute loss and predict labels.
 
 
-        '''
-        # return NEROutputs(loss, pred_labels)
+        """
+        loss, pred_labels = None, None
+        hidden_states = self.fc(self.dropout(hidden_states))
+
+        if labels is None:
+            _logits = self.CRF.decode(
+                hidden_states, mask=attention_mask.type(torch.bool)
+            )
+
+            pred_labels = pad_sequence(
+                [torch.tensor(_logit) for _logit in _logits], batch_first=True
+            )
+        else:
+            loss = -1 * self.CRF(
+                hidden_states,
+                labels,
+                mask=attention_mask.type(torch.bool),
+                reduction="mean",
+            )
+            if not no_decode:
+                _logits = self.CRF.decode(
+                    hidden_states, mask=attention_mask.type(torch.bool)
+                )
+                pred_labels = pad_sequence(
+                    [torch.tensor(_logit) for _logit in _logits], batch_first=True
+                )
+
+        return NEROutputs(loss, pred_labels)
 
 
 def _group_ner_outputs(output1: NEROutputs, output2: NEROutputs):
@@ -104,24 +140,26 @@ class BertForLinearHeadNER(BertPreTrainedModel):
 
         self.bert = BertModel(config)
 
-        self.classifier = LinearClassifier(config.hidden_size, num_labels1, config.hidden_dropout_prob)
-        
+        self.classifier = LinearClassifier(
+            config.hidden_size, num_labels1, config.hidden_dropout_prob
+        )
+
         self.init_weights()
 
     def forward(
-            self,
-            input_ids=None,
-            attention_mask=None,
-            token_type_ids=None,
-            position_ids=None,
-            head_mask=None,
-            inputs_embeds=None,
-            labels=None,
-            labels2=None,
-            output_attentions=None,
-            output_hidden_states=None,
-            return_dict=None,
-            no_decode=False,
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        labels=None,
+        labels2=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        no_decode=False,
     ):
         sequence_output = self.bert(
             input_ids,
@@ -148,25 +186,32 @@ class BertForLinearHeadNestedNER(BertPreTrainedModel):
         self.config = config
 
         self.bert = BertModel(config)
-        '''NOTE: This is where to modify for Nested NER.
+        """NOTE: This is where to modify for Nested NER.
 
-        '''
+        """
+        self.classifier1 = LinearClassifier(
+            config.hidden_size, num_labels1, config.hidden_dropout_prob
+        )
+        self.classifier2 = LinearClassifier(
+            config.hidden_size, num_labels2, config.hidden_dropout_prob
+        )
+
         self.init_weights()
 
     def forward(
-            self,
-            input_ids=None,
-            attention_mask=None,
-            token_type_ids=None,
-            position_ids=None,
-            head_mask=None,
-            inputs_embeds=None,
-            labels=None,
-            labels2=None,
-            output_attentions=None,
-            output_hidden_states=None,
-            return_dict=None,
-            no_decode=False,
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        labels=None,
+        labels2=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        no_decode=False,
     ):
         sequence_output = self.bert(
             input_ids,
@@ -180,11 +225,18 @@ class BertForLinearHeadNestedNER(BertPreTrainedModel):
             return_dict=return_dict,
         )[0]
 
-        '''NOTE: This is where to modify for Nested NER.
+        """NOTE: This is where to modify for Nested NER.
 
         Use the above function _group_ner_outputs for combining results.
 
-        '''
+        """
+        output1 = self.classifier1.forward(sequence_output, labels, no_decode=no_decode)
+        output2 = self.classifier2.forward(
+            sequence_output, labels2, no_decode=no_decode
+        )
+        output = _group_ner_outputs(output1, output2)
+
+        return output
 
 
 class BertForCRFHeadNER(BertPreTrainedModel):
@@ -196,24 +248,26 @@ class BertForCRFHeadNER(BertPreTrainedModel):
         self.config = config
 
         self.bert = BertModel(config)
-        self.classifier = CRFClassifier(config.hidden_size, num_labels1, config.hidden_dropout_prob)
-        
+        self.classifier = CRFClassifier(
+            config.hidden_size, num_labels1, config.hidden_dropout_prob
+        )
+
         self.init_weights()
 
     def forward(
-            self,
-            input_ids=None,
-            attention_mask=None,
-            token_type_ids=None,
-            position_ids=None,
-            head_mask=None,
-            inputs_embeds=None,
-            labels=None,
-            labels2=None,
-            output_attentions=None,
-            output_hidden_states=None,
-            return_dict=None,
-            no_decode=False,
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        labels=None,
+        labels2=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        no_decode=False,
     ):
         sequence_output = self.bert(
             input_ids,
@@ -227,7 +281,8 @@ class BertForCRFHeadNER(BertPreTrainedModel):
             return_dict=return_dict,
         )[0]
 
-        output = self.classifier.forward(sequence_output, attention_mask, labels, no_decode=no_decode)
-        
-        return output
+        output = self.classifier.forward(
+            sequence_output, attention_mask, labels, no_decode=no_decode
+        )
 
+        return output
