@@ -23,6 +23,7 @@ class NEROutputs(ModelOutput):
     """
     NOTE: `logits` here is the CRF decoding result.
     """
+
     loss: Optional[torch.FloatTensor] = None
     logits: Optional[torch.LongTensor] = None
 
@@ -32,8 +33,7 @@ class LinearClassifier(nn.Module):
         super().__init__()
         self.num_labels = num_labels
         self.layers = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size, num_labels)
+            nn.Dropout(dropout), nn.Linear(hidden_size, num_labels)
         )
         self.loss_fct = CrossEntropyLoss()
 
@@ -60,8 +60,7 @@ class CRFClassifier(nn.Module):
         self.num_labels = num_labels
 
         self.layers = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size, num_labels)
+            nn.Dropout(dropout), nn.Linear(hidden_size, num_labels)
         )
 
         self.crf = CRF(num_labels, batch_first=True)
@@ -69,11 +68,23 @@ class CRFClassifier(nn.Module):
     def _pred_labels(self, emissions, mask):
 
         pred_labels = self.crf.decode(emissions, mask.byte())
-        out_ = pad_sequence([torch.tensor(pred_label, device=emissions.device) for pred_label in pred_labels],
-                            batch_first=True)
+        out_ = pad_sequence(
+            [
+                torch.tensor(pred_label, device=emissions.device)
+                for pred_label in pred_labels
+            ],
+            batch_first=True,
+        )
         return out_
 
-    def forward(self, hidden_states, attention_mask, labels=None, no_decode=False, label_pad_token_id=NER_PAD_ID):
+    def forward(
+        self,
+        hidden_states,
+        attention_mask,
+        labels=None,
+        no_decode=False,
+        label_pad_token_id=NER_PAD_ID,
+    ):
 
         _emissions = self.layers(hidden_states)
         loss, pred_labels = None, None
@@ -95,11 +106,12 @@ class BiLSTMClassifier(nn.Module):
         super().__init__()
         self.num_labels = num_labels
 
-        self.bilstm = nn.LSTM(hidden_size, int(hidden_size/2), 2, batch_first=True, bidirectional=True)
+        self.bilstm = nn.LSTM(
+            hidden_size, int(hidden_size / 2), 2, batch_first=True, bidirectional=True
+        )
 
         self.layers = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size, num_labels)
+            nn.Dropout(dropout), nn.Linear(hidden_size, num_labels)
         )
 
         self.crf = CRF(num_labels, batch_first=True)
@@ -107,11 +119,23 @@ class BiLSTMClassifier(nn.Module):
     def _pred_labels(self, emissions, mask):
 
         pred_labels = self.crf.decode(emissions, mask.byte())
-        out_ = pad_sequence([torch.tensor(pred_label, device=emissions.device) for pred_label in pred_labels],
-                            batch_first=True)
+        out_ = pad_sequence(
+            [
+                torch.tensor(pred_label, device=emissions.device)
+                for pred_label in pred_labels
+            ],
+            batch_first=True,
+        )
         return out_
 
-    def forward(self, hidden_states, attention_mask, labels=None, no_decode=False, label_pad_token_id=NER_PAD_ID):
+    def forward(
+        self,
+        hidden_states,
+        attention_mask,
+        labels=None,
+        no_decode=False,
+        label_pad_token_id=NER_PAD_ID,
+    ):
 
         hidden_states, _ = self.bilstm(hidden_states)
         _emissions = self.layers(hidden_states)
@@ -152,24 +176,26 @@ class BertForLinearHeadNER(BertPreTrainedModel):
 
         self.bert = BertModel(config)
 
-        self.classifier = LinearClassifier(config.hidden_size, num_labels1, config.hidden_dropout_prob)
+        self.classifier = LinearClassifier(
+            config.hidden_size, num_labels1, config.hidden_dropout_prob
+        )
 
         self.init_weights()
 
     def forward(
-            self,
-            input_ids=None,
-            attention_mask=None,
-            token_type_ids=None,
-            position_ids=None,
-            head_mask=None,
-            inputs_embeds=None,
-            labels=None,
-            labels2=None,
-            output_attentions=None,
-            output_hidden_states=None,
-            return_dict=None,
-            no_decode=False,
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        labels=None,
+        labels2=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        no_decode=False,
     ):
         sequence_output = self.bert(
             input_ids,
@@ -196,28 +222,32 @@ class BertForLinearHeadNestedNER(BertPreTrainedModel):
         self.config = config
 
         self.bert = BertModel(config)
-        '''NOTE: This is where to modify for Nested NER.
+        """NOTE: This is where to modify for Nested NER.
 
-        '''
-        self.classifier1 = LinearClassifier(config.hidden_size, num_labels1, config.hidden_dropout_prob)
-        self.classifier2 = LinearClassifier(config.hidden_size, num_labels2, config.hidden_dropout_prob)
+        """
+        self.classifier1 = LinearClassifier(
+            config.hidden_size, num_labels1, config.hidden_dropout_prob
+        )
+        self.classifier2 = LinearClassifier(
+            config.hidden_size, num_labels2, config.hidden_dropout_prob
+        )
 
         self.init_weights()
 
     def forward(
-            self,
-            input_ids=None,
-            attention_mask=None,
-            token_type_ids=None,
-            position_ids=None,
-            head_mask=None,
-            inputs_embeds=None,
-            labels=None,
-            labels2=None,
-            output_attentions=None,
-            output_hidden_states=None,
-            return_dict=None,
-            no_decode=False,
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        labels=None,
+        labels2=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        no_decode=False,
     ):
         sequence_output = self.bert(
             input_ids,
@@ -231,13 +261,15 @@ class BertForLinearHeadNestedNER(BertPreTrainedModel):
             return_dict=return_dict,
         )[0]
 
-        '''NOTE: This is where to modify for Nested NER.
+        """NOTE: This is where to modify for Nested NER.
 
         Use the above function _group_ner_outputs for combining results.
 
-        '''
+        """
         output1 = self.classifier1.forward(sequence_output, labels, no_decode=no_decode)
-        output2 = self.classifier2.forward(sequence_output, labels2, no_decode=no_decode)
+        output2 = self.classifier2.forward(
+            sequence_output, labels2, no_decode=no_decode
+        )
         return _group_ner_outputs(output1, output2)
 
 
@@ -250,24 +282,26 @@ class BertForCRFHeadNER(BertPreTrainedModel):
         self.config = config
 
         self.bert = BertModel(config)
-        self.classifier = CRFClassifier(config.hidden_size, num_labels1, config.hidden_dropout_prob)
+        self.classifier = CRFClassifier(
+            config.hidden_size, num_labels1, config.hidden_dropout_prob
+        )
 
         self.init_weights()
 
     def forward(
-            self,
-            input_ids=None,
-            attention_mask=None,
-            token_type_ids=None,
-            position_ids=None,
-            head_mask=None,
-            inputs_embeds=None,
-            labels=None,
-            labels2=None,
-            output_attentions=None,
-            output_hidden_states=None,
-            return_dict=None,
-            no_decode=False,
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        labels=None,
+        labels2=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        no_decode=False,
     ):
         sequence_output = self.bert(
             input_ids,
@@ -281,7 +315,9 @@ class BertForCRFHeadNER(BertPreTrainedModel):
             return_dict=return_dict,
         )[0]
 
-        output = self.classifier.forward(sequence_output, attention_mask, labels, no_decode=no_decode)
+        output = self.classifier.forward(
+            sequence_output, attention_mask, labels, no_decode=no_decode
+        )
 
         return output
 
@@ -296,25 +332,29 @@ class BertForCRFHeadNestedNER(BertPreTrainedModel):
 
         self.bert = BertModel(config)
 
-        self.classifier1 = CRFClassifier(config.hidden_size, num_labels1, config.hidden_dropout_prob)
-        self.classifier2 = CRFClassifier(config.hidden_size, num_labels2, config.hidden_dropout_prob)
+        self.classifier1 = CRFClassifier(
+            config.hidden_size, num_labels1, config.hidden_dropout_prob
+        )
+        self.classifier2 = CRFClassifier(
+            config.hidden_size, num_labels2, config.hidden_dropout_prob
+        )
 
         self.init_weights()
 
     def forward(
-            self,
-            input_ids=None,
-            attention_mask=None,
-            token_type_ids=None,
-            position_ids=None,
-            head_mask=None,
-            inputs_embeds=None,
-            labels=None,
-            labels2=None,
-            output_attentions=None,
-            output_hidden_states=None,
-            return_dict=None,
-            no_decode=False,
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        labels=None,
+        labels2=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        no_decode=False,
     ):
         sequence_output = self.bert(
             input_ids,
@@ -328,8 +368,12 @@ class BertForCRFHeadNestedNER(BertPreTrainedModel):
             return_dict=return_dict,
         )[0]
 
-        output1 = self.classifier1.forward(sequence_output, attention_mask, labels, no_decode=no_decode)
-        output2 = self.classifier2.forward(sequence_output, attention_mask, labels2, no_decode=no_decode)
+        output1 = self.classifier1.forward(
+            sequence_output, attention_mask, labels, no_decode=no_decode
+        )
+        output2 = self.classifier2.forward(
+            sequence_output, attention_mask, labels2, no_decode=no_decode
+        )
         return _group_ner_outputs(output1, output2)
 
 
@@ -343,25 +387,29 @@ class BertForBiLSTMHeadNestedNER(BertPreTrainedModel):
 
         self.bert = BertModel(config)
 
-        self.classifier1 = BiLSTMClassifier(config.hidden_size, num_labels1, config.hidden_dropout_prob)
-        self.classifier2 = BiLSTMClassifier(config.hidden_size, num_labels2, config.hidden_dropout_prob)
+        self.classifier1 = BiLSTMClassifier(
+            config.hidden_size, num_labels1, config.hidden_dropout_prob
+        )
+        self.classifier2 = BiLSTMClassifier(
+            config.hidden_size, num_labels2, config.hidden_dropout_prob
+        )
 
         self.init_weights()
 
     def forward(
-            self,
-            input_ids=None,
-            attention_mask=None,
-            token_type_ids=None,
-            position_ids=None,
-            head_mask=None,
-            inputs_embeds=None,
-            labels=None,
-            labels2=None,
-            output_attentions=None,
-            output_hidden_states=None,
-            return_dict=None,
-            no_decode=False,
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        labels=None,
+        labels2=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        no_decode=False,
     ):
         sequence_output = self.bert(
             input_ids,
@@ -375,6 +423,10 @@ class BertForBiLSTMHeadNestedNER(BertPreTrainedModel):
             return_dict=return_dict,
         )[0]
 
-        output1 = self.classifier1.forward(sequence_output, attention_mask, labels, no_decode=no_decode)
-        output2 = self.classifier2.forward(sequence_output, attention_mask, labels2, no_decode=no_decode)
+        output1 = self.classifier1.forward(
+            sequence_output, attention_mask, labels, no_decode=no_decode
+        )
+        output2 = self.classifier2.forward(
+            sequence_output, attention_mask, labels2, no_decode=no_decode
+        )
         return _group_ner_outputs(output1, output2)

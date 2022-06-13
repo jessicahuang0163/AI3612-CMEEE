@@ -7,15 +7,13 @@ from transformers import Trainer
 
 # FGM
 class FGM:
-    def __init__(self, model: nn.Module, eps=1.):
-        self.model = (
-            model.module if hasattr(model, "module") else model
-        )
+    def __init__(self, model: nn.Module, eps=1.0):
+        self.model = model.module if hasattr(model, "module") else model
         self.eps = eps
         self.backup = {}
 
     # only attack word embedding
-    def attack(self, emb_name='word_embeddings'):
+    def attack(self, emb_name="word_embeddings"):
         for name, param in self.model.named_parameters():
             if param.requires_grad and emb_name in name:
                 self.backup[name] = param.data.clone()
@@ -24,7 +22,7 @@ class FGM:
                     r_at = self.eps * param.grad / norm
                     param.data.add_(r_at)
 
-    def restore(self, emb_name='word_embeddings'):
+    def restore(self, emb_name="word_embeddings"):
         for name, para in self.model.named_parameters():
             if para.requires_grad and emb_name in name:
                 assert name in self.backup
@@ -34,16 +32,14 @@ class FGM:
 
 
 class PGD:
-    def __init__(self, model, eps=1., alpha=0.3):
-        self.model = (
-            model.module if hasattr(model, "module") else model
-        )
+    def __init__(self, model, eps=1.0, alpha=0.3):
+        self.model = model.module if hasattr(model, "module") else model
         self.eps = eps
         self.alpha = alpha
         self.emb_backup = {}
         self.grad_backup = {}
 
-    def attack(self, emb_name='word_embeddings', is_first_attack=False):
+    def attack(self, emb_name="word_embeddings", is_first_attack=False):
         for name, param in self.model.named_parameters():
             if param.requires_grad and emb_name in name:
                 if is_first_attack:
@@ -54,7 +50,7 @@ class PGD:
                     param.data.add_(r_at)
                     param.data = self.project(name, param.data)
 
-    def restore(self, emb_name='word_embeddings'):
+    def restore(self, emb_name="word_embeddings"):
         for name, param in self.model.named_parameters():
             if param.requires_grad and emb_name in name:
                 assert name in self.emb_backup
@@ -80,11 +76,12 @@ class PGD:
 
 # Overload the trainer with adversarial training
 class Trainer_FGM(Trainer):
-
     def __init__(self, *args, **kwargs):
         super(Trainer_FGM, self).__init__(*args, **kwargs)
 
-    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
+    def training_step(
+        self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]
+    ) -> torch.Tensor:
         model.train()
         inputs = self._prepare_inputs(inputs)
 
@@ -96,7 +93,7 @@ class Trainer_FGM(Trainer):
         # loss = self.scaler.scale(loss)
         loss.backward()
 
-        fgm.attack(emb_name='word_embeddings')
+        fgm.attack(emb_name="word_embeddings")
         loss_adv = self.compute_loss(model, inputs)
         loss_adv.backward()
         fgm.restore()
@@ -106,11 +103,12 @@ class Trainer_FGM(Trainer):
 
 # Overload the trainer with adversarial training
 class Trainer_PGD(Trainer):
-
     def __init__(self, *args, **kwargs):
         super(Trainer_PGD, self).__init__(*args, **kwargs)
 
-    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
+    def training_step(
+        self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]
+    ) -> torch.Tensor:
         model.train()
         inputs = self._prepare_inputs(inputs)
 
@@ -120,7 +118,7 @@ class Trainer_PGD(Trainer):
         # loss = self.scaler.scale(loss)
         loss.backward()
 
-        pgd = PGD(model, eps=1., alpha=0.3)
+        pgd = PGD(model, eps=1.0, alpha=0.3)
         pgd_k = 3
 
         pgd.backup_grad()
