@@ -43,8 +43,7 @@ case ${TASK_ID} in
   ;;
 esac
 
-# OUTPUT_DIR=../ckpts/${MODEL_TYPE}_${HEAD_TYPE}_${SEED}
-OUTPUT_DIR=../ckpts/baseline
+ OUTPUT_DIR=../ckpts/${MODEL_TYPE}_${HEAD_TYPE}_${SEED}
 
 PYTHONPATH=../.. \
 python run_cmeee.py \
@@ -64,7 +63,7 @@ python run_cmeee.py \
   \
   --learning_rate               3e-5 \
   --weight_decay                3e-6 \
-  --max_grad_norm               0.5 \
+  --max_grad_norm               0.35 \
   --lr_scheduler_type           cosine \
   \
   --num_train_epochs            40 \

@@ -13,20 +13,15 @@ from torch.utils.data import Dataset
 
 logger = logging.getLogger(__name__)
 
-NER_PAD, NO_ENT = "[PAD]", "O"
+NER_PAD, NO_ENT = '[PAD]', 'O'
 
-LABEL1 = ["dep", "equ", "mic", "ite", "dru", "pro", "dis", "bod"]  # 按照出现频率从低到高排序
-LABEL2 = ["sym"]
+LABEL1 = ['dep', 'equ', 'mic', 'ite', 'dru', 'pro', 'dis', 'bod']  # 按照出现频率从低到高排序
+LABEL2 = ['sym']
 
-LABEL = ["dep", "equ", "mic", "ite", "dru", "pro", "sym", "dis", "bod"]
+LABEL = ['dep', 'equ', 'mic', 'ite', 'dru', 'pro', 'sym', 'dis', 'bod']
 
 # 标签出现频率映射，从低到高
-_LABEL_RANK = {
-    L: i
-    for i, L in enumerate(
-        ["dep", "equ", "mic", "ite", "dru", "pro", "sym", "dis", "bod"]
-    )
-}
+_LABEL_RANK = {L: i for i, L in enumerate(['dep', 'equ', 'mic', 'ite', 'dru', 'pro', 'sym', 'dis', 'bod'])}
 
 EE_id2label1 = [NER_PAD, NO_ENT] + [f"{P}-{L}" for L in LABEL1 for P in ("B", "I")]
 EE_id2label2 = [NER_PAD, NO_ENT] + [f"{P}-{L}" for L in LABEL2 for P in ("B", "I")]
@@ -40,6 +35,9 @@ EE_NUM_LABELS1 = len(EE_id2label1)
 EE_NUM_LABELS2 = len(EE_id2label2)
 EE_NUM_LABELS = len(EE_id2label)
 
+W2_ID2LABEL = ['[PAD]', 'suc'] + LABEL
+W2_LABEL2ID = {L: i for i, L in enumerate(W2_ID2LABEL)}
+W2_NUM_LABELS = len(W2_ID2LABEL)
 
 class InputExample:
     def __init__(self, sentence_id: str, text: str, entities: List[dict] = None):
@@ -48,8 +46,8 @@ class InputExample:
         self.entities = entities
 
     def to_ner_task(self, for_nested_ner: bool = False):
-        """NOTE: This function is what you need to modify for Nested NER.
-        """
+        '''NOTE: This function is what you need to modify for Nested NER.
+        '''
         if self.entities is None:
             return self.sentence_id, self.text
         else:
@@ -71,15 +69,13 @@ class InputExample:
                 end_idx = entity["end_idx"]
                 entity_type = entity["type"]
 
-                assert (
-                    entity["entity"] == self.text[start_idx : end_idx + 1]
-                ), f"{entity} mismatch: `{self.text}`"
+                assert entity["entity"] == self.text[start_idx: end_idx + 1], f"{entity} mismatch: `{self.text}`"
 
                 if not for_nested_ner:
                     _write_label(label, entity_type, start_idx, end_idx)
                 else:
                     ### DONE
-                    if entity_type != "sym":
+                    if entity_type != 'sym':
                         _write_label(label1, entity_type, start_idx, end_idx)
                     else:
                         _write_label(label2, entity_type, start_idx, end_idx)
@@ -88,6 +84,20 @@ class InputExample:
                 return self.sentence_id, self.text, label
             else:
                 return self.sentence_id, self.text, [label1, label2]
+
+    def to_begin_end_label_tuples(self):
+        '''NOTE: This function is modifed for W2NER.
+        '''
+        label2id_mapping = W2_LABEL2ID
+        if self.entities is None:
+            return self.sentence_id, self.text
+        else:
+            labels = []
+            for e in self.entities:
+                start, end, label = e['start_idx'], e['end_idx'], e['type']
+                if start <= end:
+                    labels.append((start, end, label2id_mapping[label]))
+            return self.sentence_id, self.text, labels
 
 
 class EEDataloader:
@@ -102,10 +112,7 @@ class EEDataloader:
 
     @staticmethod
     def _parse(cmeee_data: List[dict]) -> List[InputExample]:
-        return [
-            InputExample(sentence_id=str(i), **data)
-            for i, data in enumerate(cmeee_data)
-        ]
+        return [InputExample(sentence_id=str(i), **data) for i, data in enumerate(cmeee_data)]
 
     def get_data(self, mode: str):
         if mode not in ("train", "dev", "test"):
@@ -114,14 +121,7 @@ class EEDataloader:
 
 
 class EEDataset(Dataset):
-    def __init__(
-        self,
-        cblue_root: str,
-        mode: str,
-        max_length: int,
-        tokenizer,
-        for_nested_ner: bool,
-    ):
+    def __init__(self, cblue_root: str, mode: str, max_length: int, tokenizer, for_nested_ner: bool):
         self.cblue_root = cblue_root
         self.data_root = join(cblue_root, "CMeEE")
         self.max_length = max_length
@@ -133,9 +133,7 @@ class EEDataset(Dataset):
         # Processed data can vary from using different tokenizers
         _tk_class = re.match("<class '.*\.(.*)'>", str(type(tokenizer))).group(1)
         _head = 2 if for_nested_ner else 1
-        cache_file = join(
-            self.data_root, f"cache_{mode}_{max_length}_{_tk_class}_{_head}head.pkl"
-        )
+        cache_file = join(self.data_root, f"cache_{mode}_{max_length}_{_tk_class}_{_head}head.pkl")
 
         if False and exists(cache_file):
             with open(cache_file, "rb") as f:
@@ -144,13 +142,13 @@ class EEDataset(Dataset):
         else:
             self.examples = EEDataloader(cblue_root).get_data(mode)  # get original data
             self.data = self._preprocess(self.examples, tokenizer)  # preprocess
-            with open(cache_file, "wb") as f:
+            with open(cache_file, 'wb') as f:
                 pickle.dump((self.examples, self.data), f)
             logger.info(f"Cache data to {cache_file}")
 
     def _preprocess(self, examples: List[InputExample], tokenizer) -> list:
-        """NOTE: This function is what you need to modify for Nested NER.
-        """
+        '''NOTE: This function is what you need to modify for Nested NER.
+        '''
         is_test = examples[0].entities is None
         data = []
 
@@ -183,44 +181,20 @@ class EEDataset(Dataset):
                 if not is_test:
                     if self.for_nested_ner:
                         L1, L2 = L
-                        label_ids[0].extend(
-                            [label2id[0][L1]]
-                            + [tokenizer.pad_token_id] * (len(token) - 1)
-                        )
-                        label_ids[1].extend(
-                            [label2id[1][L2]]
-                            + [tokenizer.pad_token_id] * (len(token) - 1)
-                        )
+                        label_ids[0].extend([label2id[0][L1]] + [tokenizer.pad_token_id] * (len(token) - 1))
+                        label_ids[1].extend([label2id[1][L2]] + [tokenizer.pad_token_id] * (len(token) - 1))
                     else:
-                        label_ids.extend(
-                            [label2id[L]] + [tokenizer.pad_token_id] * (len(token) - 1)
-                        )
+                        label_ids.extend([label2id[L]] + [tokenizer.pad_token_id] * (len(token) - 1))
 
-            tokens = (
-                [tokenizer.cls_token]
-                + tokens[: self.max_length - 2]
-                + [tokenizer.sep_token]
-            )
+            tokens = [tokenizer.cls_token] + tokens[: self.max_length - 2] + [tokenizer.sep_token]
             token_ids = tokenizer.convert_tokens_to_ids(tokens)
 
             if not is_test:
                 if self.for_nested_ner:
-                    label_ids[0] = (
-                        [label2id[0][NO_ENT]]
-                        + label_ids[0][: self.max_length - 2]
-                        + [label2id[0][NO_ENT]]
-                    )
-                    label_ids[1] = (
-                        [label2id[1][NO_ENT]]
-                        + label_ids[1][: self.max_length - 2]
-                        + [label2id[1][NO_ENT]]
-                    )
+                    label_ids[0] = [label2id[0][NO_ENT]] + label_ids[0][: self.max_length - 2] + [label2id[0][NO_ENT]]
+                    label_ids[1] = [label2id[1][NO_ENT]] + label_ids[1][: self.max_length - 2] + [label2id[1][NO_ENT]]
                 else:
-                    label_ids = (
-                        [label2id[NO_ENT]]
-                        + label_ids[: self.max_length - 2]
-                        + [label2id[NO_ENT]]
-                    )
+                    label_ids = [label2id[NO_ENT]] + label_ids[: self.max_length - 2] + [label2id[NO_ENT]]
 
                 data.append((token_ids, label_ids))
             else:
@@ -236,19 +210,14 @@ class EEDataset(Dataset):
 
 
 class CollateFnForEE:
-    def __init__(
-        self,
-        pad_token_id: int,
-        label_pad_token_id: int = EE_label2id[NER_PAD],
-        for_nested_ner: bool = False,
-    ):
+    def __init__(self, pad_token_id: int, label_pad_token_id: int = EE_label2id[NER_PAD], for_nested_ner: bool = False):
         self.pad_token_id = pad_token_id
         self.label_pad_token_id = label_pad_token_id
         self.for_nested_ner = for_nested_ner
 
     def __call__(self, batch) -> dict:
-        """NOTE: This function is what you need to modify for Nested NER.
-        """
+        '''NOTE: This function is what you need to modify for Nested NER.
+        '''
         inputs = [x[0] for x in batch]
         no_decode_flag = batch[0][1]
 
@@ -263,7 +232,7 @@ class CollateFnForEE:
         attention_mask = torch.zeros((len(batch), max_len), dtype=torch.long)
 
         for i, _ids in enumerate(input_ids):
-            attention_mask[i][: len(_ids)] = 1
+            attention_mask[i][:len(_ids)] = 1
             _delta_len = max_len - len(_ids)
             input_ids[i] += [self.pad_token_id] * _delta_len
 
@@ -276,42 +245,33 @@ class CollateFnForEE:
             inputs = {
                 "input_ids": torch.tensor(input_ids, dtype=torch.long),
                 "attention_mask": attention_mask,
-                "labels": torch.tensor(labels, dtype=torch.long)
-                if labels is not None
-                else None,
-                "no_decode": no_decode_flag,
+                "labels": torch.tensor(labels, dtype=torch.long) if labels is not None else None,
+                "no_decode": no_decode_flag
             }
         else:
             inputs = {
                 "input_ids": torch.tensor(input_ids, dtype=torch.long),
                 "attention_mask": attention_mask,
-                "labels": torch.tensor(labels, dtype=torch.long)
-                if labels is not None
-                else None,  # modify this
-                "labels2": torch.tensor(labels2, dtype=torch.long)
-                if labels is not None
-                else None,  # modify this
-                "no_decode": no_decode_flag,
+                "labels": torch.tensor(labels, dtype=torch.long) if labels is not None else None,  # modify this
+                "labels2": torch.tensor(labels2, dtype=torch.long) if labels is not None else None,  # modify this
+                "no_decode": no_decode_flag
             }
 
         return inputs
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     import os
     from os.path import expanduser
     from transformers import BertTokenizer
 
+   
     MODEL_NAME = "../bert-base-chinese"
     CBLUE_ROOT = "../data/CBLUEDatasets"
 
     tokenizer = BertTokenizer.from_pretrained(MODEL_NAME)
-    dataset = EEDataset(
-        CBLUE_ROOT, mode="dev", max_length=10, tokenizer=tokenizer, for_nested_ner=True
-    )
+    dataset = EEDataset(CBLUE_ROOT, mode="dev", max_length=10, tokenizer=tokenizer, for_nested_ner=True)
 
     batch = [dataset[0], dataset[1], dataset[2]]
-    inputs = CollateFnForEE(pad_token_id=tokenizer.pad_token_id, for_nested_ner=True)(
-        batch
-    )
+    inputs = CollateFnForEE(pad_token_id=tokenizer.pad_token_id, for_nested_ner=True)(batch)
     print(inputs)
